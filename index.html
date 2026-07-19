@@ -142,8 +142,8 @@
   const sfx = (function () {
     let ctx = null;
     let enabled = localStorage.getItem("sound2048") !== "off";
-    const VOL = 3;          // master volume multiplier
-    const MAX_GAIN = 0.9;   // clamp to avoid clipping/distortion
+    const VOL = 9;          // master volume multiplier
+    const MAX_GAIN = 1.0;   // clamp at full scale to avoid clipping/distortion
 
     function ac() {
       if (!ctx) {
