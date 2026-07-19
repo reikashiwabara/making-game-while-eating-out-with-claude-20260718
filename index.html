@@ -49,6 +49,9 @@
     padding: 10px 16px; font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap;
   }
   .btn:active { background: #7c6a58; }
+  .actions { display: flex; align-items: center; gap: 8px; }
+  .btn-icon { padding: 10px 12px; font-size: 18px; line-height: 1; }
+  .btn-icon.off { background: #bbada0; }
   .board-wrap { position: relative; width: 100%; }
   .board {
     position: relative; width: 100%; aspect-ratio: 1 / 1;
@@ -105,7 +108,10 @@
   </header>
   <div class="subbar">
     <p>タイルをスワイプ<br>して<b>2048</b>を作ろう！</p>
-    <button class="btn" id="newgame">新しいゲーム</button>
+    <div class="actions">
+      <button class="btn btn-icon" id="sound" aria-label="サウンド切替" title="サウンド・バイブ切替">🔊</button>
+      <button class="btn" id="newgame">新しいゲーム</button>
+    </div>
   </div>
   <div class="board-wrap">
     <div class="board" id="board"></div>
@@ -130,6 +136,75 @@
   const overlayEl = document.getElementById("overlay");
   const overlayMsg = document.getElementById("overlay-msg");
   const overlayBtn = document.getElementById("overlay-btn");
+  const soundBtn = document.getElementById("sound");
+
+  // ---- sound (Web Audio, no external files) + vibration ----
+  const sfx = (function () {
+    let ctx = null;
+    let enabled = localStorage.getItem("sound2048") !== "off";
+
+    function ac() {
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) ctx = new AC();
+      }
+      // browsers may start the context suspended until a user gesture
+      if (ctx && ctx.state === "suspended") ctx.resume();
+      return ctx;
+    }
+
+    // one short tone
+    function tone(freq, dur, type, gain, delay) {
+      const c = ac();
+      if (!c) return;
+      const t0 = c.currentTime + (delay || 0);
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = type || "sine";
+      osc.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(gain || 0.15, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(g).connect(c.destination);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    }
+
+    function buzz(pattern) {
+      if (navigator.vibrate) navigator.vibrate(pattern);
+    }
+
+    return {
+      isOn: () => enabled,
+      toggle() {
+        enabled = !enabled;
+        localStorage.setItem("sound2048", enabled ? "on" : "off");
+        if (enabled) { ac(); tone(660, 0.08, "triangle", 0.15); } // confirmation blip
+        return enabled;
+      },
+      // pitch rises with the merged tile value
+      merge(value) {
+        if (!enabled) return;
+        const steps = Math.min(9, Math.max(0, Math.log2(value) - 2)); // 8->0 ... 2048->9
+        tone(300 + steps * 55, 0.12, "triangle", 0.16);
+        buzz(15);
+      },
+      slide() {
+        if (!enabled) return;
+        tone(180, 0.05, "sine", 0.06);
+      },
+      win() {
+        if (!enabled) return;
+        [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.18, "triangle", 0.16, i * 0.1));
+        buzz([0, 30, 40, 30, 40, 60]);
+      },
+      gameover() {
+        if (!enabled) return;
+        [330, 262, 196].forEach((f, i) => tone(f, 0.25, "sine", 0.14, i * 0.13));
+        buzz([0, 60, 50, 120]);
+      }
+    };
+  })();
 
   let grid, score, best, won, over, tiles, tileId;
 
@@ -232,6 +307,7 @@
     // cells that already absorbed a merge this move (can't merge twice)
     const mergedCells = new Set();
     const toRemove = [];
+    let maxMerge = 0; // largest tile produced this move (for sound pitch)
 
     for (const r of rows) {
       for (const c of cols) {
@@ -262,6 +338,7 @@
           target.v = newVal;
           target.merged = true;
           score += newVal;
+          if (newVal > maxMerge) maxMerge = newVal;
           if (newVal === 2048 && won === false) won = true;
           moved = true;
         } else {
@@ -277,6 +354,10 @@
 
     grid = newGrid;
     render(false);            // slide tiles (incl. merged ones onto targets)
+
+    // sound + vibration feedback for this move
+    if (maxMerge > 0) sfx.merge(maxMerge);
+    else sfx.slide();
 
     // finalize logical state synchronously so rapid input can't desync it:
     // merged-away tiles leave the map now; only their DOM removal is deferred.
@@ -329,6 +410,7 @@
       overlayBtn.textContent = "続ける";
       over = false; // allow continue
       won = "shown";
+      sfx.win();
       return;
     }
     if (!movesAvailable()) {
@@ -337,6 +419,7 @@
       overlayEl.classList.remove("win");
       overlayBtn.textContent = "もう一度";
       overlayEl.classList.add("show");
+      sfx.gameover();
     }
   }
 
@@ -401,6 +484,14 @@
       reset();
     }
   });
+
+  function updateSoundBtn() {
+    const on = sfx.isOn();
+    soundBtn.textContent = on ? "🔊" : "🔇";
+    soundBtn.classList.toggle("off", !on);
+  }
+  soundBtn.addEventListener("click", () => { sfx.toggle(); updateSoundBtn(); });
+  updateSoundBtn();
 
   // init
   buildCells();
