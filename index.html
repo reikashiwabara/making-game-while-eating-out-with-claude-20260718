@@ -142,6 +142,8 @@
   const sfx = (function () {
     let ctx = null;
     let enabled = localStorage.getItem("sound2048") !== "off";
+    const VOL = 3;          // master volume multiplier
+    const MAX_GAIN = 0.9;   // clamp to avoid clipping/distortion
 
     function ac() {
       if (!ctx) {
@@ -160,10 +162,11 @@
       const t0 = c.currentTime + (delay || 0);
       const osc = c.createOscillator();
       const g = c.createGain();
+      const peak = Math.min((gain || 0.15) * VOL, MAX_GAIN);
       osc.type = type || "sine";
       osc.frequency.setValueAtTime(freq, t0);
       g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(gain || 0.15, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       osc.connect(g).connect(c.destination);
       osc.start(t0);
