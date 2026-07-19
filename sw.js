@@ -1,6 +1,6 @@
 // Service worker for the 2048 PWA.
 // Bump CACHE when any asset below changes so clients pick up the new version.
-const CACHE = "2048-v1";
+const CACHE = "2048-v2";
 const ASSETS = [
   "./",
   "./index.html",
